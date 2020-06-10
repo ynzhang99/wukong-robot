@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  wukong-robot 是一个简单、灵活、优雅的中文语音对话机器人/智能音箱项目，目的是让中国的 Maker 和 Haker 们也能快速打造个性化的智能音箱。
+  wukong-robot 是一个简单、灵活、优雅的中文语音对话机器人/智能音箱项目，目的是让中国的 Maker 和 Haker 们也能快速打造个性化的智能音箱。wukong-robot 还可能是第一个开源的脑机唤醒智能音箱。
 </p>
 
 <p align="center">
@@ -39,18 +39,19 @@
 * [联系](#联系)
 * [感谢](#感谢)
 * [FAQ](#faq)
+* [教学视频](#教学视频)
 * [免责声明](#免责声明)
 
 ## 特性
 
 <p align="center">
-  <img src="http://hahack-1253537070.file.myqcloud.com/images/wukong-docs/wukong-robot-mindmap.png" alt="wukong-robot">
+  <img src="https://hahack-1253537070.file.myqcloud.com/images/wukong-docs/wukong-robot-mindmap.png?version=20191123" alt="wukong-robot">
 </p>
 
 * 模块化。功能插件、语音识别、语音合成、对话机器人都做到了高度模块化，第三方插件单独维护，方便继承和开发自己的插件。
 * 中文支持。集成百度、科大讯飞、阿里、腾讯等多家中文语音识别和语音合成技术，且可以继续扩展。
-* 对话机器人支持。支持接入图灵机器人、Emotibot 等对话机器人。
-* 全局监听，离线唤醒。支持无接触地离线语音指令唤醒。
+* 对话机器人支持。支持基于 AnyQ 的本地对话机器人，并支持接入图灵机器人、Emotibot 等在线对话机器人。
+* 全局监听，离线唤醒。支持 Muse 脑机唤醒，及无接触的离线语音指令唤醒。
 * 灵活可配置。支持定制机器人名字，支持选择语音识别和合成的插件。
 * 智能家居。支持和 mqtt、HomeAssistant 等智能家居协议联动，支持语音控制智能家电。
 * 后台配套支持。提供配套后台，可实现远程操控、修改配置和日志查看等功能。
@@ -73,18 +74,18 @@ wukong-robot 被唤醒后，用户的语音指令先经过 ASR 引擎进行 ASR 
   <img src="http://hahack-1253537070.file.myqcloud.com/images/wukong-docs/user-demo.jpg" alt="demo">
 </p>
 
-* 直接交互的视频 Demo
-  - coming soon
-  - 在视频 Demo 出来前，你可以先看看有类似交互的 [dingdang-robot 的视频 Demo](https://github.com/dingdang-robot/dingdang-robot/wiki/demo)。
+* Demo视频：
+  - [ycy-robot 月芽特别定制版](https://www.bilibili.com/video/av50685517/)
+  - [使用脑机唤醒 wukong-robot](https://www.bilibili.com/video/av76739580/)
+  - [Google AIY Voice Kit + wukong-robot](https://www.bilibili.com/video/av81173082/)
 * 后台管理端 Demo
-  - 体验地址：https://bot.hahack.com/  （体验用户名：wukong；体验密码：wukong@2019）
-  - 备选体验地址：https://bot.sxzz.moe/ （体验用户名：wukong；体验密码：wukong@2019）
+  - 体验地址：https://bot.hahack.com  （体验用户名：wukong；体验密码：wukong@2019）
 
 ## 环境要求 ##
 
 ### Python 版本 ###
 
-wukong-robot 只支持 Python 3.x，不支持 Python 2.x 。
+wukong-robot 只支持 Python 3.5+，不支持 Python 2.x 。
 
 ### 设备要求 ###
 
@@ -170,14 +171,24 @@ wukong-robot 的后台接口是开放 Web API 的，可以使用 Restful 方式�
 
 * 对于个人用户，可以使用支付宝或者微信进行捐赠，单笔超过 20 元的捐赠者，您的 ID 将可以出现在 wukong-robot 后台管理端的捐赠页面中。
 
+ 
 | 支付宝 | 微信支付 |
 | ------ | --------- |
 | <img src="http://hahack.com/images/misc/alipay.png" height="248px" width="164px" title="支付宝" style="display:inherit;"/> | <img src="http://hahack.com/images/misc/wechatpay.jpeg" height="248px" width="164px" title="微信支付" style="display:inherit;"/> |
 
-* 对于企业用户，建议[成为这个项目的 sponsor](https://opencollective.com/wukong-robot/contribute/tier/8131-sponsor)，您将可以把一个带链接的 logo 放在 wukong-robot 后台管理端的首页、捐赠页面以及 Github 项目首页中。
+* 对于企业用户，建议[成为这个项目的 backer](https://opencollective.com/wukong-robot/contribute/tier/8131-sponsor)，您将可以把一个带链接的 logo 放在 wukong-robot 后台管理端的首页、捐赠页面以及 Github 项目首页中。
 
-<p align="center">
-  <a href="https://opencollective.com/wukong-robot/contribute/tier/8131-sponsor" target="_blank"><img src="https://opencollective.com/wukong-robot/sponsors.svg?width=890"></a>
+<p>
+  <a href="https://opencollective.com/wukong-robot/sponsor/0/website" target="_blank"><img src="https://opencollective.com/wukong-robot/sponsor/0/avatar.svg"></a>
+<a href="https://opencollective.com/wukong-robot/sponsor/1/website" target="_blank"><img src="https://opencollective.com/wukong-robot/sponsor/1/avatar.svg"></a>
+<a href="https://opencollective.com/wukong-robot/sponsor/2/website" target="_blank"><img src="https://opencollective.com/wukong-robot/sponsor/2/avatar.svg"></a>
+<a href="https://opencollective.com/wukong-robot/sponsor/3/website" target="_blank"><img src="https://opencollective.com/wukong-robot/sponsor/3/avatar.svg"></a>
+<a href="https://opencollective.com/wukong-robot/sponsor/4/website" target="_blank"><img src="https://opencollective.com/wukong-robot/sponsor/4/avatar.svg"></a>
+<a href="https://opencollective.com/wukong-robot/sponsor/5/website" target="_blank"><img src="https://opencollective.com/wukong-robot/sponsor/5/avatar.svg"></a>
+<a href="https://opencollective.com/wukong-robot/sponsor/6/website" target="_blank"><img src="https://opencollective.com/wukong-robot/sponsor/6/avatar.svg"></a>
+<a href="https://opencollective.com/wukong-robot/sponsor/7/website" target="_blank"><img src="https://opencollective.com/wukong-robot/sponsor/7/avatar.svg"></a>
+<a href="https://opencollective.com/wukong-robot/sponsor/8/website" target="_blank"><img src="https://opencollective.com/wukong-robot/sponsor/8/avatar.svg"></a>
+<a href="https://opencollective.com/wukong-robot/sponsor/9/website" target="_blank"><img src="https://opencollective.com/wukong-robot/sponsor/9/avatar.svg"></a>
 </p>
 
 ## 贡献
@@ -190,7 +201,7 @@ wukong-robot 的后台接口是开放 Web API 的，可以使用 Restful 方式�
 ## 联系
 
 * wukong-robot 的主要开发者是 [潘伟洲](http://hahack.com) 。
-* QQ 群：580447290（人数将满，为控制人数，需付费20元入群，群收入达到一万时将无偿捐赠给壹基金）
+* QQ 群：580447290（人数将满，为控制人数，需付费20元入群。**群收入的前一万元已无偿捐赠给[壹基金等公益项目](https://hahack-1253537070.cos.ap-chengdu.myqcloud.com/images/donate.png)**）
 
 ## 感谢
 
@@ -204,6 +215,17 @@ wukong-robot 的后台接口是开放 Web API 的，可以使用 Restful 方式�
 - 我能否更换成其他唤醒词，而不是叫“孙悟空”？
 
   - 能。到 [snowboy官网](http://snowboy.kitt.ai/) 训练一个自己的唤醒词，然后将生成的 pmdl 文件放到 ~/.wukong 中，然后修改配置文件中的 `hotword` 配置即可。
+  
+## 教学视频
+
+想了解全栈项目 wukong-robot 是怎么开发出来的吗？那就不能错过我们在腾讯课堂NEXT学院的视频课程。
+
+这套视频课程将从零开始，一步步教你如何使用 Python 开发出 wukong-robot 。涉及 Python 的基础语法，以及离线唤醒（KWS）、静音检测（VAD）、语音识别（ASR）、语音合成（TTS）、对话机器人等知识背景的介绍及相关sdk和服务的接入，并在这个基础上如何通过一步步的重构优化，开发出一个灵活可配置的 wukong-robot 。另外，还介绍了如何使用 tornado + twitter bootstrap + jQuery + Ajax 开发后台管理端及前端页面。进阶版中还包括了爬虫技术及 Flask 等技术的相关实战。
+
+* 基础篇：https://ke.qq.com/course/387931?tuin=1b8113f4
+* 完整篇：https://ke.qq.com/course/384790?tuin=1b8113f4
+
+> 优惠信息：加QQ群（580447290）联系小木鱼可以领取课程优惠券。
 
 ## 免责声明
 

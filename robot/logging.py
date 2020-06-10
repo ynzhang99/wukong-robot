@@ -1,5 +1,4 @@
 import logging
-import sys
 import os
 from robot import constants
 from logging.handlers import RotatingFileHandler
@@ -8,6 +7,7 @@ PAGE = 4096
 
 DEBUG = logging.DEBUG
 INFO = logging.INFO
+WARNING = logging.WARNING
 ERROR = logging.ERROR
 
 def tail(filepath, n=10):
@@ -48,16 +48,11 @@ def getLogger(name):
     
     :returns: logger
     """
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(filename)s - %(funcName)s - line %(lineno)s - %(levelname)s - %(message)s')
 
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
-    # StreamHandler
-    stream_handler = logging.StreamHandler(sys.stdout)
-    stream_handler.setLevel(level=logging.INFO)
-    stream_handler.setFormatter(formatter)
-    logger.addHandler(stream_handler)
-
+    
     # FileHandler
     file_handler = RotatingFileHandler(os.path.join(constants.TEMP_PATH, 'wukong.log'), maxBytes=1024*1024,backupCount=5)
     file_handler.setLevel(level=logging.DEBUG)

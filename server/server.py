@@ -1,25 +1,26 @@
+import os
+import yaml
 import json
-from robot import config, utils, logging, constants, Updater
+import time
 import base64
+import random
+import hashlib
+import asyncio
 import requests
+import markdown
+import threading
+import subprocess
 import tornado.web
 import tornado.ioloop
-from tornado import gen
-import tornado.httpserver
 import tornado.options
-import hashlib
-import threading
-import asyncio
-import subprocess
-import os
-import time
-import yaml
-import markdown
-import random
+import tornado.httpserver
+from tools import make_json, solr_tools
+from robot import config, utils, logging, Updater, constants
 
 logger = logging.getLogger(__name__)
 
 conversation, wukong = None, None
+commiting = False
 
 suggestions = [
     '现在几点',
@@ -34,15 +35,18 @@ suggestions = [
 
 class BaseHandler(tornado.web.RequestHandler):
     def isValidated(self):
-        return self.get_cookie("validation") == config.get('/server/validate', '')
+        if not self.get_secure_cookie('validation'):
+            return False
+        return str(self.get_secure_cookie("validation"), encoding='utf-8') == config.get('/server/validate', '')
     def validate(self, validation):
-        return validation == config.get('/server/validate', '')
+        if '"' in validation:
+            validation = validation.replace('"', '')
+        return validation == config.get('/server/validate', '') or validation == str(self.get_cookie('validation'))
+
 
 
 class MainHandler(BaseHandler):
 
-    @tornado.web.asynchronous
-    @gen.coroutine
     def get(self):
         global conversation, wukong, suggestions
         if not self.isValidated():
@@ -54,23 +58,58 @@ class MainHandler(BaseHandler):
             notices = None
             if 'notices' in info:
                 notices=info['notices']
-            self.render('index.html', history=conversation.getHistory(), update_info=info, suggestion=suggestion, notices=notices)
+            self.render('index.html', update_info=info, suggestion=suggestion, notices=notices)
         else:
-            self.render('index.html', history=[])
+            self.render('index.html')
+
+class MessageUpdatesHandler(BaseHandler):
+    """Long-polling request for new messages.
+
+    Waits until new messages are available before returning anything.
+    """
+
+    async def post(self):
+        if not self.validate(self.get_argument('validate', default=None)):
+            res = {'code': 1, 'message': 'illegal visit'}
+            self.write(json.dumps(res))
+        else:
+            cursor = self.get_argument("cursor", None)
+            messages = conversation.getHistory().get_messages_since(cursor)
+            while not messages:
+                # Save the Future returned here so we can cancel it in
+                # on_connection_close.
+                self.wait_future = conversation.getHistory().cond.wait()
+                try:
+                    await self.wait_future
+                except asyncio.CancelledError:
+                    return
+                messages = conversation.getHistory().get_messages_since(cursor)
+            if self.request.connection.stream.closed():
+                return
+            res = {'code': 0, 'message': 'ok', 'history': json.dumps(messages)}
+            self.write(json.dumps(res))
+
+    def on_connection_close(self):
+        self.wait_future.cancel()
 
 class ChatHandler(BaseHandler):
 
-    @tornado.web.asynchronous
-    @gen.coroutine
+    def onResp(self, msg, audio, plugin):
+        logger.debug('response msg: {}'.format(msg))
+        res = {'code': 0, 'message': 'ok', 'resp': msg, 'audio': audio, 'plugin': plugin}
+        self.write(json.dumps(res))
+
     def post(self):
-        global conversation        
-        if self.validate(self.get_argument('validate')):
+        global conversation
+        if self.validate(self.get_argument('validate', default=None)):
             if self.get_argument('type') == 'text':
                 query = self.get_argument('query')
                 uuid = self.get_argument('uuid')
-                conversation.doResponse(query, uuid)
-                res = {'code': 0, 'message': 'ok'}
-                self.write(json.dumps(res))
+                if query == '':
+                    res = {'code': 1, 'message': 'query text is empty'}
+                    self.write(json.dumps(res))
+                else:
+                    conversation.doResponse(query, uuid, onSay=lambda msg, audio, plugin: self.onResp(msg, audio, plugin))
             elif self.get_argument('type') == 'voice':
                 voice_data = self.get_argument('voice')
                 tmpfile = utils.write_temp_file(base64.b64decode(voice_data), '.wav')
@@ -81,9 +120,7 @@ class ChatHandler(BaseHandler):
                           ' ' + nfile + ' rate 16k'
                 subprocess.call([soxCall], shell=True, close_fds=True)
                 utils.check_and_delete(tmpfile)
-                conversation.doConverse(nfile)
-                res = {'code': 0, 'message': 'ok'}
-                self.write(json.dumps(res))
+                conversation.doConverse(nfile, onSay=lambda msg, audio, plugin: self.onResp(msg, audio, plugin))
             else:
                 res = {'code': 1, 'message': 'illegal type'}
                 self.write(json.dumps(res))
@@ -95,25 +132,21 @@ class ChatHandler(BaseHandler):
         
 class GetHistoryHandler(BaseHandler):
 
-    @tornado.web.asynchronous
-    @gen.coroutine
     def get(self):
         global conversation
-        if not self.validate(self.get_argument('validate')):
+        if not self.validate(self.get_argument('validate', default=None)):
             res = {'code': 1, 'message': 'illegal visit'}
             self.write(json.dumps(res))
         else:
-            res = {'code': 0, 'message': 'ok', 'history': json.dumps(conversation.getHistory())}
+            res = {'code': 0, 'message': 'ok', 'history': json.dumps(conversation.getHistory().cache)}
             self.write(json.dumps(res))
         self.finish()
 
 
 class GetConfigHandler(BaseHandler):
 
-    @tornado.web.asynchronous
-    @gen.coroutine
     def get(self):
-        if not self.validate(self.get_argument('validate')):
+        if not self.validate(self.get_argument('validate', default=None)):
             res = {'code': 1, 'message': 'illegal visit'}
             self.write(json.dumps(res))
         else:
@@ -129,10 +162,8 @@ class GetConfigHandler(BaseHandler):
 
 class GetLogHandler(BaseHandler):
 
-    @tornado.web.asynchronous
-    @gen.coroutine
     def get(self):
-        if not self.validate(self.get_argument('validate')):
+        if not self.validate(self.get_argument('validate', default=None)):
             res = {'code': 1, 'message': 'illegal visit'}
             self.write(json.dumps(res))
         else:
@@ -144,8 +175,6 @@ class GetLogHandler(BaseHandler):
 
 class LogHandler(BaseHandler):
 
-    @tornado.web.asynchronous
-    @gen.coroutine
     def get(self):
         if not self.isValidated():
             self.redirect("/login")
@@ -157,7 +186,7 @@ class OperateHandler(BaseHandler):
 
     def post(self):
         global wukong
-        if self.validate(self.get_argument('validate')):
+        if self.validate(self.get_argument('validate', default=None)):
             if self.get_argument('type') == 'restart':
                 res = {'code': 0, 'message': 'ok'}
                 self.write(json.dumps(res))
@@ -175,8 +204,6 @@ class OperateHandler(BaseHandler):
 
 class ConfigHandler(BaseHandler):
 
-    @tornado.web.asynchronous
-    @gen.coroutine
     def get(self):
         if not self.isValidated():
             self.redirect("/login")
@@ -184,8 +211,7 @@ class ConfigHandler(BaseHandler):
             self.render('config.html', sensitivity=config.get('sensitivity'))
 
     def post(self):
-        global conversation        
-        if self.validate(self.get_argument('validate')):            
+        if self.validate(self.get_argument('validate', default=None)):
             configStr = self.get_argument('config')
             try:
                 yaml.load(configStr)
@@ -203,8 +229,6 @@ class ConfigHandler(BaseHandler):
 
 class DonateHandler(BaseHandler):
 
-    @tornado.web.asynchronous
-    @gen.coroutine
     def get(self):
         if not self.isValidated():
             self.redirect("/login")
@@ -219,20 +243,57 @@ class DonateHandler(BaseHandler):
         ])
         self.render('donate.html', content=content)        
 
-    
 
-class APIHandler(BaseHandler):
+class QAHandler(BaseHandler):
     
-    @tornado.web.asynchronous
-    @gen.coroutine
     def get(self):
         if not self.isValidated():
             self.redirect("/login")
         else:
             content = ''
-            with open(os.path.join(constants.TEMPLATE_PATH, "api.md"), 'r') as f:
+            with open(constants.getQAPath(), 'r') as f:
                 content = f.read()
-            content = markdown.markdown(content, extensions=['codehilite',
+            self.render('qa.html', content=content)
+
+    def post(self):
+        if self.validate(self.get_argument('validate', default=None)):
+            qaStr = self.get_argument('qa')
+            qaJson = os.path.join(constants.TEMP_PATH, 'qa_json')
+            try:
+                make_json.convert(qaStr, qaJson)
+                solr_tools.clear_documents(config.get('/anyq/host', '0.0.0.0'),
+                                           'collection1',
+                                           config.get('/anyq/solr_port', '8900')
+                )
+                solr_tools.upload_documents(config.get('/anyq/host', '0.0.0.0'),
+                                            'collection1',
+                                            config.get('/anyq/solr_port', '8900'),
+                                            qaJson,
+                                            10
+                )
+                with open(constants.getQAPath(), 'w') as f:
+                    f.write(qaStr)
+                res = {'code': 0, 'message': 'ok'}
+                self.write(json.dumps(res))
+            except Exception as e:
+                logger.error(e)
+                res = {'code': 1, 'message': '提交失败，请检查内容'}
+                self.write(json.dumps(res))
+        else:
+            res = {'code': 1, 'message': 'illegal visit'}
+            self.write(json.dumps(res))
+        self.finish()
+
+
+class APIHandler(BaseHandler):
+    
+    def get(self):
+        if not self.isValidated():
+            self.redirect("/login")
+        else:
+            content = ''
+            r = requests.get('https://raw.githubusercontent.com/wzpan/wukong-contrib/master/docs/api.md')
+            content = markdown.markdown(r.text, extensions=['codehilite',
                                                'tables',
                                                'fenced_code',
                                                'meta',
@@ -244,11 +305,9 @@ class APIHandler(BaseHandler):
 
 class UpdateHandler(BaseHandler):
     
-    @tornado.web.asynchronous
-    @gen.coroutine
     def post(self):
         global wukong
-        if self.validate(self.get_argument('validate')):            
+        if self.validate(self.get_argument('validate', default=None)):
             if wukong.update():
                 res = {'code': 0, 'message': 'ok'}
                 self.write(json.dumps(res))
@@ -266,21 +325,18 @@ class UpdateHandler(BaseHandler):
         
 class LoginHandler(BaseHandler):
     
-    @tornado.web.asynchronous
-    @gen.coroutine
     def get(self):
         if self.isValidated():
             self.redirect('/')
         else:
             self.render('login.html', error=None)
 
-    @tornado.web.asynchronous
-    @gen.coroutine
     def post(self):
         if self.get_argument('username') == config.get('/server/username') and \
            hashlib.md5(self.get_argument('password').encode('utf-8')).hexdigest() \
            == config.get('/server/validate'):
-            self.set_cookie("validation", config.get('/server/validate'))
+            print('success')
+            self.set_secure_cookie("validation", config.get('/server/validate'))
             self.redirect("/")
         else:
             self.render('login.html', error="登录失败")
@@ -288,18 +344,17 @@ class LoginHandler(BaseHandler):
 
 class LogoutHandler(BaseHandler):
     
-    @tornado.web.asynchronous
-    @gen.coroutine
     def get(self):
         if self.isValidated():
-            self.set_cookie("validation", '')
+            self.set_secure_cookie("validation", '')
         self.redirect("/login")
 
 
 settings = {
-    "cookie_secret" : b'*\xc4bZv0\xd7\xf9\xb2\x8e\xff\xbcL\x1c\xfa\xfeh\xe1\xb8\xdb\xd1y_\x1a',
-    "template_path": "server/templates",
-    "static_path": "server/static",
+    "cookie_secret": config.get('/server/cookie_secret', "__GENERATE_YOUR_OWN_RANDOM_VALUE_HERE__"),
+    "template_path": os.path.join(constants.APP_PATH, "server/templates"),
+    "static_path": os.path.join(constants.APP_PATH, "server/static"),
+    "login_url": "/login",
     "debug": False
 }
 
@@ -308,6 +363,7 @@ application = tornado.web.Application([
     (r"/login", LoginHandler),
     (r"/gethistory", GetHistoryHandler),
     (r"/chat", ChatHandler),
+    (r"/chat/updates", MessageUpdatesHandler),
     (r"/config", ConfigHandler),
     (r"/getconfig", GetConfigHandler),
     (r"/operate", OperateHandler),
@@ -315,8 +371,12 @@ application = tornado.web.Application([
     (r"/log", LogHandler),
     (r"/logout", LogoutHandler),
     (r"/api", APIHandler),
+    (r"/qa", QAHandler),
     (r"/upgrade", UpdateHandler),
-    (r"/donate", DonateHandler)
+    (r"/donate", DonateHandler),
+    (r"/photo/(.+\.(?:png|jpg|jpeg|bmp|gif|JPG|PNG|JPEG|BMP|GIF))", tornado.web.StaticFileHandler, {'path': config.get('/camera/dest_path', 'server/static')}),
+    (r"/audio/(.+\.(?:mp3|wav|pcm))", tornado.web.StaticFileHandler, {'path': constants.TEMP_PATH}),
+    (r'/static/(.*)', tornado.web.StaticFileHandler, {'path': 'server/static'})
 ], **settings)
 
 

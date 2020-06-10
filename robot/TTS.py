@@ -1,13 +1,16 @@
 # -*- coding: utf-8-*-
-from aip import AipSpeech
-from .sdk import TencentSpeech, AliSpeech
-from . import utils, config
-from robot import logging
+import os
 import base64
-import time
-import requests
-import hashlib
+import tempfile
+import pypinyin
+from aip import AipSpeech
+from . import utils, config, constants
+from robot import logging
+from pathlib import Path
+from pypinyin import lazy_pinyin
+from pydub import AudioSegment
 from abc import ABCMeta, abstractmethod
+from .sdk import TencentSpeech, AliSpeech, XunfeiSpeech, atc
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +34,85 @@ class AbstractTTS(object):
     @abstractmethod
     def get_speech(self, phrase):
         pass
+
+
+class HanTTS(AbstractTTS):
+    """
+    HanTTS：https://github.com/junzew/HanTTS
+    要使用本模块, 需要先从 SourceForge 下载语音库 syllables.zip ：
+    https://sourceforge.net/projects/hantts/files/?source=navbar
+    并解压到 ~/.wukong 目录下
+    """
+
+    SLUG = "han-tts"
+    CHUNK = 1024
+    punctuation = ['，', '。','？','！','“','”','；','：','（',"）",":",";",",",".","?","!","\"","\'","(",")"]
+
+    def __init__(self, voice='syllables', **args):
+        super(self.__class__, self).__init__()
+        self.voice = voice
+
+    @classmethod
+    def get_config(cls):
+        # Try to get han-tts config from config
+        return config.get('han-tts', {})
+
+    def get_speech(self, phrase):
+        """
+        Synthesize .wav from text
+        """
+        src = os.path.join(constants.CONFIG_PATH, self.voice)
+        text = phrase
+
+        def preprocess(syllables):
+            temp = []
+            for syllable in syllables:
+                for p in self.punctuation:
+                    syllable = syllable.replace(p, "")
+                if syllable.isdigit():
+                    syllable = atc.num2chinese(syllable)
+                    new_sounds = lazy_pinyin(syllable, style=pypinyin.TONE3)
+                    for e in new_sounds:
+                        temp.append(e)
+                else:
+                    temp.append(syllable)
+            return temp
+        
+        if not os.path.exists(src):
+            logger.error('{} 合成失败: 请先下载 syllables.zip (https://sourceforge.net/projects/hantts/files/?source=navbar) 并解压到 ~/.wukong 目录下'.format(self.SLUG))
+            return None
+        logger.debug("{} 合成中...".format(self.SLUG))
+        delay = 0
+        increment = 355 # milliseconds
+        pause = 500 # pause for punctuation
+        syllables = lazy_pinyin(text, style=pypinyin.TONE3)
+        syllables = preprocess(syllables)
+        
+        # initialize to be complete silence, each character takes up ~500ms
+        result = AudioSegment.silent(duration=500*len(text))
+        for syllable in syllables:
+            path = os.path.join(src, syllable+".wav")
+            sound_file = Path(path)
+            # insert 500 ms silence for punctuation marks
+            if syllable in self.punctuation:
+                short_silence = AudioSegment.silent(duration=pause)
+                result = result.overlay(short_silence, position=delay)
+                delay += increment
+                continue
+            # skip sound file that doesn't exist
+            if not sound_file.is_file():
+                continue
+            segment = AudioSegment.from_wav(path)
+            result = result.overlay(segment, position=delay)
+            delay += increment
+
+        tmpfile = ''
+        with tempfile.NamedTemporaryFile() as f:
+            tmpfile = f.name
+        result.export(tmpfile, format="wav")
+        logger.info('{} 语音合成成功，合成路径：{}'.format(self.SLUG, tmpfile))
+        return tmpfile
+
 
 class BaiduTTS(AbstractTTS):
     """
@@ -113,56 +195,21 @@ class TencentTTS(AbstractTTS):
 class XunfeiTTS(AbstractTTS):
     """
     科大讯飞的语音识别API.
-    外网ip查询：https://ip.51240.com/
-    voice_name: https://www.xfyun.cn/services/online_tts
     """
 
     SLUG = "xunfei-tts"
 
-    def __init__(self, appid, api_key, voice_name='xiaoyan'):
+    def __init__(self, appid, api_key, api_secret, voice='xiaoyan'):
         super(self.__class__, self).__init__()
-        self.appid, self.api_key, self.voice_name = appid, api_key, voice_name
+        self.appid, self.api_key, self.api_secret, self.voice_name = appid, api_key, api_secret, voice
 
     @classmethod
     def get_config(cls):
         # Try to get xunfei_yuyin config from config
         return config.get('xunfei_yuyin', {})     
 
-    def getHeader(self, aue):
-        curTime = str(int(time.time()))
-        # curTime = '1526542623'
-        param = "{\"aue\":\""+aue+"\",\"auf\":\"audio/L16;rate=16000\",\"voice_name\":\"" + self.voice_name + "\",\"engine_type\":\"intp65\"}"
-        logger.debug("param:{}".format(param))
-        paramBase64 = str(base64.b64encode(param.encode('utf-8')), 'utf-8')
-        logger.debug("x_param:{}".format(paramBase64))
-
-        m2 = hashlib.md5()
-        m2.update((self.api_key + curTime + paramBase64).encode('utf-8'))
-        checkSum = m2.hexdigest()
-        header = {
-            'X-CurTime': curTime,
-            'X-Param': paramBase64,
-            'X-Appid': self.appid,
-            'X-CheckSum': checkSum,
-            'X-Real-Ip':'127.0.0.1',
-            'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
-        }
-        return header
-
-    def getBody(self, text):
-        data = {'text':text}
-        return data
-
     def get_speech(self, phrase):
-        URL = "http://api.xfyun.cn/v1/service/v1/tts"
-        r = requests.post(URL, headers=self.getHeader('lame'), data=self.getBody(phrase))
-        contentType = r.headers['Content-Type']
-        if contentType == "audio/mpeg":
-            tmpfile = utils.write_temp_file(r.content, '.mp3')
-            logger.info('{} 语音合成成功，合成路径：{}'.format(self.SLUG, tmpfile))
-            return tmpfile
-        else :
-            logger.critical('{} 合成失败！{}'.format(self.SLUG, r.text), exc_info=True)
+        return XunfeiSpeech.synthesize(phrase, self.appid, self.api_key, self.api_secret, self.voice_name)
 
 
 class AliTTS(AbstractTTS):

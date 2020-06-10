@@ -1,8 +1,12 @@
 function saveConfig(msg) {
+    if (window.location.href.indexOf('bot.hahack.com') >= 0) {
+        bootbox.alert("demo 站点禁止修改配置!");
+        return;
+    }
     $.ajax({
         url: '/config',
         type: "POST",
-        data: {"config": $('#config-input').val(), "validate": getCookie("validation")},
+        data: {"config": $('#config-input').val(), 'validate': getCookie('validation')},
         success: function(res) {
             var data = JSON.parse(res);
             if (!msg) msg='';
@@ -22,7 +26,7 @@ $(function() {
     $.ajax({
         url: '/getconfig',
         type: "GET",
-        data: {"validate": getCookie("validation")},
+        data: {'validate': getCookie('validation')},
         success: function(res) {
             var data = JSON.parse(res);            
             if (data.code == 0) {
